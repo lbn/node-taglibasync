@@ -27,6 +27,7 @@ using namespace node;
 #define SET_INT_TAG(TAG) \
 	v1obj->Set(String::New(#TAG),Integer::New(mpeg->v1_tag->TAG())); 
 
+
 class MPEG : ObjectWrap {
 public:
 	static Persistent<FunctionTemplate> pft;
@@ -166,6 +167,7 @@ public:
 
 		return Undefined();
 	}
+
 	static int EIO_get(eio_req *req)
 	{
 		MPEGTagInfoReq *tagreq = static_cast<MPEGTagInfoReq *>(req->data);
@@ -179,19 +181,20 @@ public:
 			return 0;
 		}
 
-		Local<Object> v2obj = Object::New();
+		tagreq->taginfo->Set(String::New("v2"),Object::New());
+		Local<Object> v2obj = Local<Object>::Cast(tagreq->taginfo->Get(String::New("v2")));
+		
 		if (mpeg->v2_tag) {
 			TagLib::ID3v2::FrameList::ConstIterator it = mpeg->v2_tag->frameList().begin();
 			for(; it != mpeg->v2_tag->frameList().end(); it++) {
-				Local<String> frameid = TagLibStringToString(*(new TagLib::String((*it)->frameID())));
-				Local<Value> value = TagLibStringToString((*it)->toString());
-				printf("Frame: %s, Value: %s\n",*(String::AsciiValue(frameid)),*(String::AsciiValue(value)));
-				v2obj->ForceSet(frameid,value);
-			}
+				Handle<String> frameid = TagLibStringToString(*(new TagLib::String((*it)->frameID())));
+				Local<Value> value = FrameToValue(*it);	
+				v2obj->Set(frameid,value);
+			}	
 		}
-		tagreq->taginfo->Set(String::New("v2"),v2obj);
-
-		Local<Object> v1obj = Object::New();
+		
+		tagreq->taginfo->Set(String::New("v1"),Object::New());
+		Local<Object> v1obj = Local<Object>::Cast(tagreq->taginfo->Get(String::New("v1")));
 		if (mpeg->v1_tag) {
 			SET_STR_TAG(title)
 			SET_STR_TAG(artist)
@@ -201,8 +204,6 @@ public:
 			SET_INT_TAG(track)
 			SET_INT_TAG(year)
 		}
-		tagreq->taginfo->Set(String::New("v1"),v1obj);
-	
 		return 0;
 	}
 
@@ -226,7 +227,20 @@ public:
 		delete tagreq;
 		return 0;
 	}
-
+	
+	static Local<Value> FrameToValue(TagLib::ID3v2::Frame *frame)
+	{
+		const char *charval = frame->toString().to8Bit(true).c_str();
+		char *end;
+		int derp = (int)strtol(charval,&end,10);
+		if (charval == end) { // not a number
+			return Local<Value>::New(String::New(charval));
+		} else { // number
+			return Local<Value>::New(Integer::New(derp));
+		}	
+	}
+	
+	
 	// Author: Nikhil Marathe (github/nikhilm)	
 	static Local<String> TagLibStringToString( TagLib::String s )
 	{
